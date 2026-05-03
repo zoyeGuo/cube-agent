@@ -1,0 +1,33 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.knowledge/
+
+# Local secrets and environment
+.env
+.env.local
+.env.*.local
+runtime/.env
+*.pem
+*.p12
+*.key
+
+# Logs and debug traces
+*.log
+runtime/debug_tool_call_trace.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+runtime/.venv/
+
+# Frontend / Tauri build artifacts
+voxel-avatar/node_modules/
+voxel-avatar/dist/
+voxel-avatar/src-tauri/target/
+
+# Archive artifacts
+runtime.zip

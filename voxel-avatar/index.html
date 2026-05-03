@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voxel Avatar</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { background: transparent !important; }
+      body { overflow: hidden; font-family: monospace; }
+      #drag-region {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 36px;
+        z-index: 9999;
+        cursor: move;
+        user-select: none;
+        -webkit-user-select: none;
+        background: rgba(0, 0, 0, 0.001);
+      }
+      #canvas {
+        display: block; width: 100vw; height: 100vh;
+        transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+      #canvas.panel-open { transform: translateX(56px); }
+
+      /* ── Context Panel ─────────────────────────────────────────── */
+      #context-panel {
+        position: fixed; left: 16px; top: 50%;
+        transform: translateY(-50%) translateX(calc(-100% - 20px));
+        width: 190px;
+        max-height: 70vh;
+        overflow-y: auto;
+        background: rgba(0, 12, 35, 0.85);
+        border: 1px solid rgba(0, 120, 255, 0.3);
+        border-radius: 10px;
+        backdrop-filter: blur(14px);
+        padding: 14px 12px;
+        z-index: 200;
+        transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 120, 255, 0.3) transparent;
+      }
+      #context-panel.visible {
+        transform: translateY(-50%) translateX(0);
+      }
+      #panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      #panel-title {
+        color: rgba(0, 200, 255, 0.6);
+        font-size: 9px; letter-spacing: 2px;
+      }
+      #panel-close {
+        background: transparent; border: none; cursor: pointer;
+        color: rgba(0, 180, 255, 0.4); font-size: 14px; line-height: 1;
+        padding: 0 2px;
+        transition: color 0.15s;
+      }
+      #panel-close:hover { color: rgba(0, 220, 255, 0.9); }
+      .panel-item {
+        padding: 7px 10px;
+        margin-bottom: 5px;
+        border-radius: 6px;
+        border: 1px solid rgba(0, 100, 200, 0.25);
+        background: rgba(0, 30, 80, 0.4);
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .panel-item:hover {
+        background: rgba(0, 80, 200, 0.4);
+        border-color: rgba(0, 160, 255, 0.5);
+      }
+      .panel-item.recommended {
+        border-color: rgba(0, 180, 255, 0.45);
+        background: rgba(0, 50, 120, 0.45);
+      }
+      .panel-item.current {
+        border-color: rgba(80, 220, 255, 0.7);
+        background: rgba(0, 60, 140, 0.55);
+      }
+      .item-current-dot {
+        width: 5px; height: 5px; border-radius: 50%;
+        background: rgba(80, 220, 255, 0.9);
+        flex-shrink: 0;
+      }
+      .item-label {
+        color: #aee4ff; font-size: 11px; letter-spacing: 0.3px;
+      }
+      .item-tag {
+        color: rgba(0, 200, 255, 0.55);
+        font-size: 9px; letter-spacing: 0.5px;
+        max-width: 70px; text-align: right;
+        line-height: 1.3;
+      }
+      .item-tag.rec-tag {
+        color: rgba(80, 220, 255, 0.9);
+        font-size: 8px;
+        border: 1px solid rgba(80, 220, 255, 0.4);
+        border-radius: 3px;
+        padding: 1px 4px;
+      }
+      #panel-divider {
+        border: none;
+        border-top: 1px solid rgba(0, 100, 200, 0.2);
+        margin: 8px 0;
+      }
+      #panel-expand {
+        width: 100%; padding: 5px;
+        background: transparent;
+        border: 1px solid rgba(0, 100, 200, 0.2);
+        border-radius: 5px;
+        color: rgba(0, 180, 255, 0.5);
+        font-size: 9px; letter-spacing: 1px;
+        cursor: pointer; font-family: monospace;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      #panel-expand:hover {
+        color: rgba(0, 200, 255, 0.8);
+        border-color: rgba(0, 160, 255, 0.4);
+      }
+      #panel-extra { display: none; }
+      #panel-extra.open { display: block; }
+
+      /* ── 日程面板 ──────────────────────────────────────────────── */
+      #schedule-panel {
+        position: fixed; right: 16px; top: 50%;
+        transform: translateY(-50%) translateX(calc(100% + 20px));
+        width: 200px;
+        max-height: 70vh;
+        overflow-y: auto;
+        background: rgba(0, 12, 35, 0.85);
+        border: 1px solid rgba(0, 120, 255, 0.3);
+        border-radius: 10px;
+        backdrop-filter: blur(14px);
+        padding: 14px 12px;
+        z-index: 200;
+        transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 120, 255, 0.3) transparent;
+      }
+      #schedule-panel.visible {
+        transform: translateY(-50%) translateX(0);
+      }
+      #schedule-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      #schedule-title {
+        color: rgba(0, 200, 255, 0.6);
+        font-size: 9px; letter-spacing: 2px;
+      }
+      #schedule-close {
+        background: transparent; border: none; cursor: pointer;
+        color: rgba(0, 180, 255, 0.4); font-size: 14px; line-height: 1;
+        padding: 0 2px; transition: color 0.15s;
+      }
+      #schedule-close:hover { color: rgba(0, 220, 255, 0.9); }
+      .schedule-item {
+        padding: 8px 10px; margin-bottom: 6px;
+        border-radius: 6px;
+        border: 1px solid rgba(0, 100, 200, 0.25);
+        background: rgba(0, 30, 80, 0.4);
+      }
+      .schedule-time {
+        color: rgba(0, 200, 255, 0.7);
+        font-size: 9px; letter-spacing: 1px; margin-bottom: 3px;
+      }
+      .schedule-msg {
+        color: #aee4ff; font-size: 11px; letter-spacing: 0.3px;
+        line-height: 1.4;
+      }
+      .schedule-empty {
+        color: rgba(100, 180, 255, 0.35);
+        font-size: 11px; text-align: center; padding: 16px 0;
+      }
+
+      /* ── 会话面板 ──────────────────────────────────────────────── */
+      #session-panel {
+        position: fixed; left: 16px; top: 50%;
+        transform: translateY(-50%) translateX(calc(-100% - 20px));
+        width: min(560px, calc(100vw - 32px));
+        max-height: 72vh;
+        overflow-y: auto;
+        background: rgba(0, 10, 30, 0.88);
+        border: 1px solid rgba(90, 170, 255, 0.28);
+        border-radius: 12px;
+        backdrop-filter: blur(16px);
+        padding: 14px 12px;
+        z-index: 210;
+        transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 120, 255, 0.3) transparent;
+      }
+      #session-panel.visible {
+        transform: translateY(-50%) translateX(0);
+      }
+      #session-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      #session-title {
+        color: rgba(120, 205, 255, 0.72);
+        font-size: 9px; letter-spacing: 2px;
+      }
+      #session-close {
+        background: transparent; border: none; cursor: pointer;
+        color: rgba(0, 180, 255, 0.4); font-size: 14px; line-height: 1;
+        padding: 0 2px; transition: color 0.15s;
+      }
+      #session-close:hover { color: rgba(0, 220, 255, 0.9); }
+      #session-body {
+        display: grid;
+        grid-template-columns: minmax(178px, 220px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+      #session-list {
+        min-width: 0;
+      }
+      #session-items {
+        max-height: calc(72vh - 56px);
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      .session-item {
+        width: 100%;
+        padding: 9px 10px;
+        margin-bottom: 7px;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 100, 200, 0.22);
+        background: rgba(0, 26, 70, 0.4);
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s, border-color 0.15s, transform 0.15s;
+      }
+      .session-item:hover {
+        background: rgba(0, 70, 170, 0.35);
+        border-color: rgba(0, 160, 255, 0.44);
+        transform: translateX(2px);
+      }
+      .session-item.current {
+        border-color: rgba(80, 220, 255, 0.58);
+        background: rgba(0, 66, 150, 0.42);
+      }
+      .session-item.selected {
+        border-color: rgba(120, 205, 255, 0.58);
+        background: rgba(0, 82, 186, 0.46);
+        box-shadow: inset 0 0 0 1px rgba(120, 220, 255, 0.18);
+      }
+      .session-item.current.selected {
+        border-color: rgba(136, 230, 255, 0.76);
+        background: rgba(0, 94, 194, 0.5);
+      }
+      .session-item-time {
+        color: rgba(110, 190, 255, 0.64);
+        font-size: 9px; letter-spacing: 0.8px;
+        margin-bottom: 4px;
+      }
+      .session-item-title {
+        color: #c6ecff;
+        font-size: 11px; line-height: 1.4;
+        margin-bottom: 4px;
+      }
+      .session-item-preview {
+        color: rgba(170, 220, 255, 0.58);
+        font-size: 10px; line-height: 1.45;
+      }
+      .session-empty {
+        color: rgba(100, 180, 255, 0.35);
+        font-size: 11px; text-align: center; padding: 18px 4px;
+      }
+      #session-detail {
+        min-width: 0;
+        border: 1px solid rgba(90, 160, 240, 0.18);
+        background: rgba(2, 18, 48, 0.52);
+        border-radius: 10px;
+        padding: 12px;
+      }
+      #session-detail-title {
+        color: #d2f2ff;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-bottom: 4px;
+      }
+      #session-detail-meta {
+        color: rgba(110, 190, 255, 0.58);
+        font-size: 9px;
+        letter-spacing: 0.8px;
+        margin-bottom: 10px;
+      }
+      #session-detail-summary {
+        color: rgba(175, 225, 255, 0.7);
+        font-size: 10px;
+        line-height: 1.5;
+        margin-bottom: 10px;
+        white-space: pre-wrap;
+      }
+      #session-detail-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        margin-bottom: 12px;
+      }
+      .session-detail-message {
+        border-radius: 8px;
+        padding: 8px 9px;
+        background: rgba(0, 32, 76, 0.38);
+        border: 1px solid rgba(72, 138, 214, 0.14);
+      }
+      .session-detail-message.user {
+        background: rgba(0, 45, 94, 0.34);
+      }
+      .session-detail-message.assistant {
+        background: rgba(0, 28, 66, 0.56);
+      }
+      .session-detail-role {
+        color: rgba(105, 194, 255, 0.72);
+        font-size: 9px;
+        letter-spacing: 0.9px;
+        margin-bottom: 3px;
+      }
+      .session-detail-content {
+        color: #beeaff;
+        font-size: 10px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+      .session-detail-empty {
+        color: rgba(132, 205, 255, 0.48);
+        font-size: 10px;
+        line-height: 1.5;
+        padding: 6px 0;
+      }
+      #session-restore {
+        width: 100%;
+        padding: 8px 10px;
+        background: rgba(0, 72, 168, 0.62);
+        border: 1px solid rgba(92, 180, 255, 0.4);
+        border-radius: 8px;
+        color: #d3f0ff;
+        font-size: 11px;
+        font-family: monospace;
+        letter-spacing: 0.6px;
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s;
+      }
+      #session-restore:hover {
+        background: rgba(0, 102, 220, 0.68);
+        border-color: rgba(120, 205, 255, 0.58);
+      }
+      #session-restore:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      @media (max-width: 720px) {
+        #session-body {
+          grid-template-columns: 1fr;
+        }
+        #session-items {
+          max-height: 200px;
+        }
+      }
+
+      /* ── 回复气泡 ──────────────────────────────────────────────── */
+      #response {
+        position: fixed; top: 50%; left: 50%;
+        transform: translate(-50%, -50%) translateY(-120px);
+        max-width: 380px; width: 90%;
+        color: rgba(180, 230, 255, 0.92);
+        font-size: 12px; line-height: 1.6;
+        text-align: center; letter-spacing: 0.3px;
+        text-shadow: 0 0 10px rgba(0, 150, 255, 0.5);
+        pointer-events: none; min-height: 36px;
+        transition: opacity 0.3s;
+      }
+
+      /* ── 输入区 ────────────────────────────────────────────────── */
+      #chat-bar {
+        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 8px; align-items: center;
+        width: 90%; max-width: 420px;
+      }
+      #input {
+        flex: 1; padding: 8px 14px;
+        background: rgba(0, 20, 60, 0.7);
+        border: 1px solid rgba(0, 120, 255, 0.4);
+        border-radius: 6px; outline: none;
+        color: #aee4ff; font-size: 12px; font-family: monospace;
+        letter-spacing: 0.3px;
+        backdrop-filter: blur(8px);
+        transition: border-color 0.2s;
+      }
+      #input::placeholder { color: rgba(100, 180, 255, 0.35); }
+      #input:focus { border-color: rgba(0, 180, 255, 0.8); }
+      #send {
+        padding: 8px 16px;
+        background: rgba(0, 80, 200, 0.6);
+        border: 1px solid rgba(0, 150, 255, 0.5);
+        border-radius: 6px; color: #aee4ff;
+        font-size: 11px; font-family: monospace;
+        letter-spacing: 1px; cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: background 0.2s;
+      }
+      #send:hover { background: rgba(0, 120, 255, 0.7); }
+      #send:disabled { opacity: 0.4; cursor: not-allowed; }
+      #reset {
+        padding: 8px 12px;
+        background: rgba(0, 24, 60, 0.72);
+        border: 1px solid rgba(120, 180, 255, 0.28);
+        border-radius: 6px; color: rgba(190, 225, 255, 0.82);
+        font-size: 11px; font-family: monospace;
+        letter-spacing: 0.5px; cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: background 0.2s, border-color 0.2s;
+        white-space: nowrap;
+      }
+      #reset:hover {
+        background: rgba(0, 38, 90, 0.82);
+        border-color: rgba(140, 200, 255, 0.42);
+      }
+      #history {
+        padding: 8px 12px;
+        background: rgba(0, 28, 76, 0.74);
+        border: 1px solid rgba(95, 170, 255, 0.32);
+        border-radius: 6px; color: rgba(190, 225, 255, 0.86);
+        font-size: 11px; font-family: monospace;
+        letter-spacing: 0.5px; cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: background 0.2s, border-color 0.2s;
+        white-space: nowrap;
+      }
+      #history:hover {
+        background: rgba(0, 48, 110, 0.84);
+        border-color: rgba(130, 205, 255, 0.46);
+      }
+      #stop {
+        padding: 8px 12px;
+        background: rgba(90, 16, 22, 0.78);
+        border: 1px solid rgba(255, 120, 130, 0.26);
+        border-radius: 6px; color: rgba(255, 214, 220, 0.92);
+        font-size: 11px; font-family: monospace;
+        letter-spacing: 0.5px; cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+        white-space: nowrap;
+      }
+      #stop:hover {
+        background: rgba(126, 18, 28, 0.86);
+        border-color: rgba(255, 150, 160, 0.42);
+      }
+      #stop:disabled {
+        opacity: 0.38;
+        cursor: default;
+      }
+
+      /* ── 状态 ─────────────────────────────────────────────────── */
+      #status {
+        position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%);
+        color: rgba(0, 200, 255, 0.5); font-size: 10px; letter-spacing: 2px;
+        pointer-events: none; height: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="drag-region" data-tauri-drag-region></div>
+    <canvas id="canvas"></canvas>
+
+    <!-- Context Panel -->
+    <div id="context-panel">
+      <div id="panel-header">
+        <span id="panel-title">VOICE</span>
+        <button id="panel-close">✕</button>
+      </div>
+      <div id="panel-items"></div>
+      <div id="panel-extra"></div>
+      <hr id="panel-divider" style="display:none" />
+      <button id="panel-expand" style="display:none">展开更多 ▼</button>
+    </div>
+
+    <!-- Schedule Panel -->
+    <div id="schedule-panel">
+      <div id="schedule-header">
+        <span id="schedule-title">SCHEDULE</span>
+        <button id="schedule-close">✕</button>
+      </div>
+      <div id="schedule-items"></div>
+    </div>
+
+    <!-- Session Panel -->
+    <div id="session-panel">
+      <div id="session-header">
+        <span id="session-title">SESSIONS</span>
+        <button id="session-close">✕</button>
+      </div>
+      <div id="session-body">
+        <div id="session-list">
+          <div id="session-items"></div>
+        </div>
+        <div id="session-detail">
+          <div id="session-detail-title">选择一段会话</div>
+          <div id="session-detail-meta"></div>
+          <div id="session-detail-summary">右侧会显示这段会话的摘要和最近几轮消息。</div>
+          <div id="session-detail-messages"></div>
+          <button id="session-restore" type="button" disabled>切回这段会话</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="response"></div>
+    <div id="status"></div>
+    <div id="chat-bar">
+      <button id="history" type="button">会话</button>
+      <button id="reset" type="button">新对话</button>
+      <input id="input" type="text" placeholder="输入消息..." autocomplete="off" />
+      <button id="stop" type="button" disabled>STOP</button>
+      <button id="send">SEND</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
